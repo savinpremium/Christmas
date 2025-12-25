@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Sparkles, Download, RefreshCw, Printer, User, Gift, Snowflake, Star, Menu, X, Share2, MessageCircle, Frame } from 'lucide-react';
+import { Sparkles, Download, RefreshCw, User, Gift, Snowflake, Star, Menu, X, MessageCircle, Frame } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { GoogleGenAI } from "@google/genai";
 
@@ -14,16 +14,14 @@ export interface CardData {
   tone: CardTone;
   frameStyle: FrameStyle;
   message: string;
-  imageUrl?: string;
+  imageUrl: string;
   isGeneratingMessage: boolean;
   isGeneratingImage: boolean;
 }
 
 // --- AI Services ---
-const getAI = () => {
-  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
-  return new GoogleGenAI({ apiKey });
-};
+// Re-initializing for every request as per the guidelines to ensure the latest key is used.
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 async function generateWishAI(recipient: string, sender: string, tone: CardTone): Promise<string> {
   const ai = getAI();
@@ -34,16 +32,16 @@ async function generateWishAI(recipient: string, sender: string, tone: CardTone)
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    return response.text || "May your days be merry and bright!";
+    return response.text || "May your holiday be filled with magic and your new year with dreams coming true.";
   } catch (error) {
     console.error("Error generating wish:", error);
     return "Wishing you a season filled with light and laughter. Merry Christmas!";
   }
 }
 
-async function generateCardImageAI(tone: CardTone, recipient: string): Promise<string | null> {
+async function generateCardImageAI(tone: CardTone): Promise<string | null> {
   const ai = getAI();
-  const prompt = `A stunning Christmas masterpiece. Style: ${tone === 'Funny' ? 'Whimsical Pixar style' : 'Elegant painterly aesthetic'}. Subject: cozy winter house, Santa in distance, lit pine tree, soft snow. Warm lighting. No text. 1:1 aspect ratio. High res.`;
+  const prompt = `A high-quality Christmas illustration. Style: ${tone === 'Funny' ? 'Whimsical high-detail Pixar style' : 'Elegant painterly aesthetic'}. Scene: cozy winter landscape, glowing lit pine tree, Santa's sleigh in the sky, soft falling snow. Warm candles. 1:1 aspect ratio. No text. Ultra high resolution.`;
   
   try {
     const response = await ai.models.generateContent({
@@ -67,11 +65,9 @@ async function generateCardImageAI(tone: CardTone, recipient: string): Promise<s
 // --- Components ---
 
 const SnowEffect = () => {
-  const snowRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
+    const container = document.body;
     const createSnowflake = () => {
-      if (!snowRef.current) return;
       const snowflake = document.createElement('div');
       snowflake.className = 'snowflake';
       
@@ -84,22 +80,18 @@ const SnowEffect = () => {
       snowflake.style.animation = `snowfall ${duration}s linear forwards`;
       snowflake.style.opacity = (Math.random() * 0.5 + 0.3).toString();
       
-      if (Math.random() > 0.5) {
-        snowflake.style.filter = `blur(${Math.random() * 1.5}px)`;
-      }
-
-      snowRef.current.appendChild(snowflake);
+      container.appendChild(snowflake);
       
       setTimeout(() => {
         snowflake.remove();
       }, duration * 1000);
     };
 
-    const interval = setInterval(createSnowflake, 150);
+    const interval = setInterval(createSnowflake, 200);
     return () => clearInterval(interval);
   }, []);
 
-  return <div ref={snowRef} className="fixed inset-0 pointer-events-none z-[1]" />;
+  return null;
 };
 
 const INITIAL_CARD: CardData = {
@@ -107,7 +99,7 @@ const INITIAL_CARD: CardData = {
   sender: '',
   tone: 'Heartfelt',
   frameStyle: 'Classic',
-  message: 'Fill in the names to craft your magical Christmas wish...',
+  message: 'Enter names below to create your magical Christmas wish...',
   imageUrl: 'https://images.unsplash.com/photo-1543589077-47d816067f70?auto=format&fit=crop&q=80&w=1000',
   isGeneratingMessage: false,
   isGeneratingImage: false,
@@ -132,7 +124,7 @@ const CardGenerator = () => {
 
   const handleGenerateImage = async () => {
     setCard(prev => ({ ...prev, isGeneratingImage: true }));
-    const img = await generateCardImageAI(card.tone, card.recipient);
+    const img = await generateCardImageAI(card.tone);
     if (img) {
       setCard(prev => ({ ...prev, imageUrl: img, isGeneratingImage: false }));
     } else {
@@ -143,42 +135,30 @@ const CardGenerator = () => {
   const downloadPNG = async () => {
     if (!cardRef.current) return;
     setIsDownloading(true);
-    
     try {
-      // Use higher pixel ratio for better clarity on Vercel
+      // Small delay to ensure any transient states (hovers etc) are settled
+      await new Promise(r => setTimeout(r, 200));
       const dataUrl = await toPng(cardRef.current, {
         cacheBust: true,
         pixelRatio: 3, 
         backgroundColor: '#ffffff',
-        filter: (node) => {
-          if (node instanceof HTMLElement) {
-            return !node.classList.contains('no-print');
-          }
-          return true;
-        }
       });
-
       const link = document.createElement('a');
-      link.download = `christmas-card-${(card.recipient || 'wish').replace(/[^a-z0-9]/gi, '_')}.png`;
+      link.download = `christmas-card-${(card.recipient || 'gift').replace(/\s+/g, '_')}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
       console.error('Download failed:', err);
-      alert('Download failed. Please try again or use the Print button.');
+      alert('Could not download image. Try taking a screenshot or use "Print".');
     } finally {
       setIsDownloading(false);
     }
   };
 
   const shareToWhatsApp = () => {
-    const siteUrl = window.location.href;
-    const text = `🎄 Check out this Christmas Card I created for ${card.recipient || 'you'}! 🎅\n\n"${card.message}"\n\nCreate yours here: ${siteUrl}\n\nGenerated by Infinity Team ✨`;
-    const encodedText = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
-  };
-
-  const handlePrint = () => {
-    window.print();
+    const siteUrl = window.location.origin;
+    const text = `🎄 Christmas Card for ${card.recipient || 'you'}! 🎅\n\n"${card.message}"\n\nCreate yours: ${siteUrl}\n\nGenerated by Infinity Team ✨`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const CardFrame = ({ style }: { style: FrameStyle }) => {
@@ -187,195 +167,107 @@ const CardGenerator = () => {
         <div className="absolute inset-0 pointer-events-none z-10 border-[14px] m-2 rounded-[1.5rem] border-red-600/10 flex flex-col overflow-hidden">
           <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, #ffffff 10px, #ffffff 20px)' }} />
           <div className="relative h-full flex flex-col justify-between p-2">
-            <div className="flex justify-between">
-              <Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" />
-              <Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" />
-            </div>
-            <div className="flex justify-between">
-              <Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" />
-              <Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" />
-            </div>
+            <div className="flex justify-between"><Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" /><Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" /></div>
+            <div className="flex justify-between"><Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" /><Star className="text-red-500/40 animate-pulse" size={18} fill="currentColor" /></div>
           </div>
         </div>
       );
     }
-
     if (style === 'Winter Frost') {
       return (
         <div className="absolute inset-0 pointer-events-none z-10 border-[16px] border-white/40 backdrop-blur-[2px] m-2 rounded-[1.5rem] flex flex-col">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-30" />
-          <div className="flex justify-between p-4">
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={22} />
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={14} />
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={22} />
-          </div>
+          <div className="flex justify-between p-4"><Snowflake className="text-blue-400/50 animate-spin-slow" size={22} /><Snowflake className="text-blue-400/50 animate-spin-slow" size={14} /><Snowflake className="text-blue-400/50 animate-spin-slow" size={22} /></div>
           <div className="flex-1" />
-          <div className="flex justify-between p-4">
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={22} />
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={14} />
-            <Snowflake className="text-blue-400/50 animate-spin-slow" size={22} />
-          </div>
+          <div className="flex justify-between p-4"><Snowflake className="text-blue-400/50 animate-spin-slow" size={22} /><Snowflake className="text-blue-400/50 animate-spin-slow" size={14} /><Snowflake className="text-blue-400/50 animate-spin-slow" size={22} /></div>
         </div>
       );
     }
-
     return (
       <div className="absolute inset-0 pointer-events-none z-10 border-[12px] border-white/10 m-2 rounded-[1.5rem] flex flex-col">
-        <div className="flex justify-between p-4">
-          <Snowflake className="text-white/20" size={20} />
-          <Star className="text-red-500/30" size={24} />
-          <Snowflake className="text-white/20" size={20} />
-        </div>
+        <div className="flex justify-between p-4"><Snowflake className="text-white/20" size={20} /><Star className="text-red-500/30" size={24} /><Snowflake className="text-white/20" size={20} /></div>
         <div className="flex-1 flex items-center justify-between px-2">
           <div className="w-px h-1/4 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
           <div className="w-px h-1/4 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
         </div>
-        <div className="flex justify-between p-4">
-          <Snowflake className="text-white/20" size={20} />
-          <Gift className="text-emerald-500/30" size={24} />
-          <Snowflake className="text-white/20" size={20} />
-        </div>
+        <div className="flex justify-between p-4"><Snowflake className="text-white/20" size={20} /><Gift className="text-emerald-500/30" size={24} /><Snowflake className="text-white/20" size={20} /></div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center relative bg-transparent">
       <SnowEffect />
       
       <header className="w-full max-w-7xl px-4 py-4 sm:py-6 flex justify-between items-center no-print relative z-[20]">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20 -rotate-6 transform hover:rotate-0 transition-transform cursor-pointer">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-500/20 -rotate-6">
             <Sparkles className="text-white w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div className="block">
+          <div>
             <h1 className="font-black text-xl sm:text-2xl tracking-tighter uppercase leading-none italic">Infinity</h1>
-            <p className="text-[8px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] font-bold text-red-500 uppercase">Christmas Studio</p>
+            <p className="text-[8px] sm:text-[10px] tracking-[0.3em] font-bold text-red-500 uppercase">Christmas Studio</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button 
-            onClick={shareToWhatsApp}
-            className="p-2 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-full transition-all active:scale-95 shadow-xl flex items-center gap-2"
-          >
-            <MessageCircle size={18} />
-            <span className="hidden md:inline">WhatsApp</span>
+        <div className="flex items-center gap-2">
+          <button onClick={shareToWhatsApp} className="p-2 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-full transition-all shadow-xl flex items-center gap-2">
+            <MessageCircle size={18} /><span className="hidden md:inline">WhatsApp</span>
           </button>
-          
-          <button 
-            onClick={downloadPNG}
-            disabled={isDownloading}
-            className="p-2 sm:px-4 sm:py-2 bg-white text-black font-bold rounded-full hover:bg-zinc-200 transition-all active:scale-95 shadow-xl flex items-center gap-2 disabled:opacity-50"
-          >
+          <button onClick={downloadPNG} disabled={isDownloading} className="p-2 sm:px-4 sm:py-2 bg-white text-black font-bold rounded-full hover:bg-zinc-200 transition-all shadow-xl flex items-center gap-2 disabled:opacity-50">
             {isDownloading ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
-            <span className="hidden md:inline text-sm">PNG</span>
+            <span className="hidden md:inline">PNG</span>
           </button>
-          
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-2 bg-zinc-800 rounded-full text-white"
-          >
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="lg:hidden p-2 bg-zinc-800 rounded-full text-white">
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </header>
 
-      <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start px-4 mb-12 flex-1 relative z-[20]">
-        <div className={`fixed inset-0 bg-black/90 backdrop-blur-lg z-[100] lg:hidden transition-all duration-300 ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-          <div className="flex justify-end p-6">
-            <button onClick={() => setIsMobileMenuOpen(false)} className="p-3 bg-zinc-800 rounded-full text-white"><X size={24} /></button>
-          </div>
+      <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start px-4 mb-12 flex-1 relative z-[20]">
+        <div className={`fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] lg:hidden transition-all duration-300 ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+          <div className="flex justify-end p-6"><button onClick={() => setIsMobileMenuOpen(false)} className="p-3 bg-zinc-800 rounded-full text-white"><X size={24} /></button></div>
           <div className="px-6 pb-20 overflow-y-auto h-full">
-             <h2 className="text-3xl font-black mb-8 text-center text-white">Card Designer</h2>
+             <h2 className="text-3xl font-black mb-8 text-white text-center">Designer</h2>
              <ControlsSection card={card} setCard={setCard} onGenerateText={handleGenerateText} onGenerateImage={handleGenerateImage} />
           </div>
         </div>
 
         <section className="hidden lg:block lg:col-span-4 space-y-6 no-print sticky top-24">
           <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/50 p-8 rounded-[3rem] shadow-2xl">
-            <h2 className="text-xl font-black mb-6 flex items-center gap-2">
-              <User size={20} className="text-red-500" />
-              Creator Tools
-            </h2>
+            <h2 className="text-xl font-black mb-6 flex items-center gap-2"><User size={20} className="text-red-500" />Studio</h2>
             <ControlsSection card={card} setCard={setCard} onGenerateText={handleGenerateText} onGenerateImage={handleGenerateImage} />
           </div>
         </section>
 
-        <section className="lg:col-span-8 flex justify-center items-center py-2 sm:py-8 w-full">
-          <div className="relative group w-full max-w-[480px]">
-            <div 
-              ref={cardRef}
-              className="card-to-print relative bg-white text-zinc-900 w-full aspect-[4/5] rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-[0_40px_100px_-20px_rgba(0,0,0,0.8)] flex flex-col"
-            >
-              <div className="absolute top-[-15px] left-1/2 -translate-x-1/2 w-16 h-16 sm:w-20 sm:h-20 z-20 pointer-events-none drop-shadow-2xl">
-                <div className="text-3xl sm:text-4xl text-center">🎅</div>
-              </div>
-
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,0.03),transparent)] pointer-events-none" />
-
+        <section className="lg:col-span-8 flex justify-center items-center py-4 w-full">
+          <div className="relative w-full max-w-[480px]">
+            <div ref={cardRef} className="card-to-print relative bg-white text-zinc-900 w-full aspect-[4/5] rounded-[2.5rem] overflow-hidden shadow-[0_40px_100px_-20px_rgba(0,0,0,0.8)] flex flex-col">
+              <div className="absolute top-[-15px] left-1/2 -translate-x-1/2 w-16 h-16 sm:w-20 sm:h-20 z-20"><div className="text-4xl text-center">🎅</div></div>
               <div className="relative h-[42%] overflow-hidden">
                 <CardFrame style={card.frameStyle} />
-                <img 
-                  src={card.imageUrl} 
-                  className="w-full h-full object-cover transform transition-transform duration-1000 group-hover:scale-105" 
-                  alt="Festive Scene"
-                  crossOrigin="anonymous"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent opacity-90" />
-                
-                <div className="absolute bottom-3 left-6 z-20">
-                  <span className="bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg">
-                    AI Masterpiece
-                  </span>
-                </div>
+                <img src={card.imageUrl} className="w-full h-full object-cover" alt="Festive" crossOrigin="anonymous" />
+                <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent opacity-80" />
               </div>
-
-              <div className="flex-1 px-6 sm:px-8 py-8 sm:py-10 flex flex-col items-center justify-between text-center relative bg-white">
-                <div className="space-y-4 sm:space-y-6 w-full">
-                  <div className="relative inline-block">
-                    <h3 className="font-christmas text-4xl sm:text-5xl md:text-6xl text-red-600 drop-shadow-sm px-2">
-                      Merry Christmas
-                    </h3>
-                    <div className="absolute -top-3 -right-6 text-emerald-500 rotate-12 animate-pulse"><Star size={24} fill="currentColor" /></div>
-                  </div>
-                  
-                  <div className="relative min-h-[100px] sm:min-h-[120px] flex items-center justify-center px-2">
-                    {card.isGeneratingMessage ? (
-                      <div className="space-y-3">
-                        <div className="flex gap-1.5 justify-center">
-                          {[0,1,2].map(i => <div key={i} className="w-2.5 h-2.5 bg-red-500 rounded-full animate-bounce" style={{animationDelay: `${i*0.2}s`}} />)}
-                        </div>
-                        <p className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Summoning Christmas Spirit...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <p className="font-serif-elegant text-lg sm:text-xl md:text-2xl leading-relaxed italic text-zinc-800 max-w-[340px] mx-auto px-2">
-                           {card.message}
-                        </p>
-                      </div>
-                    )}
+              <div className="flex-1 px-8 py-10 flex flex-col items-center justify-between text-center bg-white">
+                <div className="space-y-6 w-full">
+                  <h3 className="font-christmas text-4xl sm:text-5xl md:text-6xl text-red-600">Merry Christmas</h3>
+                  <div className="min-h-[100px] flex items-center justify-center">
+                    {card.isGeneratingMessage ? <div className="animate-pulse text-zinc-400 font-bold uppercase tracking-widest text-[10px]">Summoning Wish...</div> :
+                      <p className="font-serif-elegant text-lg sm:text-xl leading-relaxed italic text-zinc-800">{card.message}</p>
+                    }
                   </div>
                 </div>
-
-                <div className="w-full mt-4 sm:mt-6 space-y-1">
-                  <div className="flex items-center gap-3 sm:gap-4 justify-center">
-                    <div className="h-px w-6 sm:w-8 bg-zinc-200" />
-                    <p className="font-script text-2xl sm:text-3xl text-emerald-700">
-                      With love, {card.sender || 'Santa'}
-                    </p>
-                    <div className="h-px w-6 sm:w-8 bg-zinc-200" />
+                <div className="w-full space-y-1">
+                  <div className="flex items-center gap-4 justify-center">
+                    <div className="h-px w-8 bg-zinc-200" />
+                    <p className="font-script text-2xl sm:text-3xl text-emerald-700">With love, {card.sender || 'Santa'}</p>
+                    <div className="h-px w-8 bg-zinc-200" />
                   </div>
-                  <p className="text-[8px] sm:text-[9px] uppercase tracking-widest font-black text-zinc-300">
-                    Specifically for {card.recipient || 'Everyone'}
-                  </p>
+                  <p className="text-[8px] uppercase tracking-widest font-black text-zinc-300">Specially for {card.recipient || 'Everyone'}</p>
                 </div>
               </div>
-              
-              <div className="absolute bottom-6 left-6 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-zinc-100 select-none">
-                INF-XM24-PRO
-              </div>
-              
+              <div className="absolute bottom-6 left-6 text-[8px] font-black uppercase tracking-[0.2em] text-zinc-200">INF-PRO-2024</div>
               <div className="h-1.5 w-full bg-gradient-to-r from-red-600 via-yellow-400 to-emerald-600" />
             </div>
           </div>
@@ -384,28 +276,11 @@ const CardGenerator = () => {
 
       <footer className="w-full py-10 text-center no-print relative z-[20]">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex justify-center gap-6 mb-6 text-zinc-800">
-             <Snowflake size={20} /> <Gift size={20} /> <Star size={20} />
-          </div>
-          <div className="space-y-2">
-            <p className="text-zinc-600 text-[9px] sm:text-[10px] tracking-[0.4em] uppercase font-black opacity-80">
-              credits - generated by infinity team
-            </p>
-            <p className="text-zinc-800 text-[8px] uppercase font-bold tracking-[0.2em]">
-              Powered by Gemini & Infinity Card Studio
-            </p>
-          </div>
+          <p className="text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-black opacity-80 mb-2">credits - generated by infinity team</p>
+          <p className="text-zinc-800 text-[8px] uppercase font-bold tracking-[0.2em]">Powered by Gemini & Infinity Card Studio</p>
         </div>
       </footer>
-      <style>{`
-        .animate-spin-slow {
-          animation: spin 10s linear infinite;
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      <style>{`.animate-spin-slow { animation: spin 10s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };
@@ -417,89 +292,39 @@ const ControlsSection = ({ card, setCard, onGenerateText, onGenerateImage }: any
         <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">Card For</label>
         <div className="relative">
           <User className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
-          <input 
-            type="text" 
-            placeholder="Recipient's Name"
-            className="w-full bg-black border border-zinc-800/80 rounded-2xl pl-12 pr-4 py-4 focus:outline-none focus:border-red-500 transition-all text-sm font-bold placeholder:text-zinc-700"
-            value={card.recipient}
-            onChange={(e) => setCard({ ...card, recipient: e.target.value })}
-          />
+          <input type="text" placeholder="Recipient's Name" className="w-full bg-black border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 focus:outline-none focus:border-red-500 transition-all text-sm font-bold text-white" value={card.recipient} onChange={(e) => setCard({ ...card, recipient: e.target.value })} />
         </div>
       </div>
-
       <div>
         <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">From</label>
         <div className="relative">
           <Gift className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
-          <input 
-            type="text" 
-            placeholder="Your Name"
-            className="w-full bg-black border border-zinc-800/80 rounded-2xl pl-12 pr-4 py-4 focus:outline-none focus:border-red-500 transition-all text-sm font-bold placeholder:text-zinc-700"
-            value={card.sender}
-            onChange={(e) => setCard({ ...card, sender: e.target.value })}
-          />
+          <input type="text" placeholder="Your Name" className="w-full bg-black border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 focus:outline-none focus:border-red-500 transition-all text-sm font-bold text-white" value={card.sender} onChange={(e) => setCard({ ...card, sender: e.target.value })} />
         </div>
       </div>
-
       <div>
-        <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">Message Style</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">Style</label>
+        <div className="grid grid-cols-2 gap-2">
           {(['Heartfelt', 'Funny', 'Professional', 'Poetic', 'Short & Sweet'] as CardTone[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setCard({ ...card, tone: t })}
-              className={`px-2 py-3 text-[9px] uppercase font-black rounded-xl border transition-all ${
-                card.tone === t 
-                  ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-600/30 scale-[1.02]' 
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
-              }`}
-            >
-              {t}
-            </button>
+            <button key={t} onClick={() => setCard({ ...card, tone: t })} className={`px-2 py-3 text-[9px] uppercase font-black rounded-xl border transition-all ${card.tone === t ? 'bg-red-600 border-red-600 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}>{t}</button>
           ))}
         </div>
       </div>
-
       <div>
-        <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">Frame Style</label>
+        <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 block">Frame</label>
         <div className="grid grid-cols-3 gap-2">
           {(['Classic', 'Candy Cane', 'Winter Frost'] as FrameStyle[]).map(fs => (
-            <button
-              key={fs}
-              onClick={() => setCard({ ...card, frameStyle: fs })}
-              className={`px-2 py-3 text-[9px] uppercase font-black rounded-xl border transition-all flex flex-col items-center gap-1 ${
-                card.frameStyle === fs 
-                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-600/30 scale-[1.02]' 
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
-              }`}
-            >
-              <Frame size={14} />
-              {fs}
-            </button>
+            <button key={fs} onClick={() => setCard({ ...card, frameStyle: fs })} className={`px-2 py-3 text-[9px] uppercase font-black rounded-xl border transition-all flex flex-col items-center gap-1 ${card.frameStyle === fs ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}><Frame size={14} />{fs}</button>
           ))}
         </div>
       </div>
     </div>
-
     <div className="pt-4 space-y-3">
-      <button 
-        onClick={onGenerateText}
-        disabled={card.isGeneratingMessage}
-        className="group relative w-full flex items-center justify-center gap-3 bg-white text-black font-black py-4 sm:py-5 rounded-2xl sm:rounded-3xl transition-all hover:bg-zinc-200 active:scale-95 disabled:opacity-50 overflow-hidden shadow-xl"
-      >
-        <span className="relative z-10 flex items-center gap-3">
-          {card.isGeneratingMessage ? <RefreshCw className="animate-spin" /> : <Sparkles size={20} />}
-          Summon AI Wish
-        </span>
+      <button onClick={onGenerateText} disabled={card.isGeneratingMessage} className="w-full flex items-center justify-center gap-3 bg-white text-black font-black py-4 rounded-3xl transition-all disabled:opacity-50">
+        {card.isGeneratingMessage ? <RefreshCw className="animate-spin" /> : <Sparkles size={20} />}Summon AI Wish
       </button>
-      
-      <button 
-        onClick={onGenerateImage}
-        disabled={card.isGeneratingImage}
-        className="w-full flex items-center justify-center gap-3 bg-zinc-800/60 border border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 text-white text-sm font-bold py-4 rounded-2xl sm:rounded-3xl transition-all"
-      >
-        {card.isGeneratingImage ? <RefreshCw className="animate-spin" size={18} /> : <Snowflake size={18} />}
-        New Magic Art
+      <button onClick={onGenerateImage} disabled={card.isGeneratingImage} className="w-full flex items-center justify-center gap-3 bg-zinc-800 border border-zinc-700 text-white text-sm font-bold py-4 rounded-3xl transition-all disabled:opacity-50">
+        {card.isGeneratingImage ? <RefreshCw className="animate-spin" size={18} /> : <Snowflake size={18} />}New Magic Art
       </button>
     </div>
   </div>
