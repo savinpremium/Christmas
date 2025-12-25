@@ -1,0 +1,7 @@
+{
+  "name": "Infinity Christmas Card Generator",
+  "description": "An AI-powered Christmas card creator that generates personalized wishes and beautiful festive illustrations using Gemini 3.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
