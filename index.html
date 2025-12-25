@@ -48,8 +48,7 @@
             background: white;
             border-radius: 50%;
             pointer-events: none;
-            /* High z-index to stay on top of all content */
-            z-index: 9999;
+            z-index: 100; /* Above background but below UI modals if any */
             top: -10px;
             filter: blur(1px);
         }

@@ -2,8 +2,105 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Sparkles, Download, RefreshCw, Printer, User, Gift, Snowflake, Star, Menu, X, Share2, MessageCircle, Frame } from 'lucide-react';
 import { toPng } from 'html-to-image';
-import { generateWish, generateCardImage } from './services/gemini';
-import { CardData, CardTone, FrameStyle } from './types';
+import { GoogleGenAI } from "@google/genai";
+
+// --- Types ---
+export type CardTone = 'Heartfelt' | 'Funny' | 'Professional' | 'Poetic' | 'Short & Sweet';
+export type FrameStyle = 'Classic' | 'Candy Cane' | 'Winter Frost';
+
+export interface CardData {
+  recipient: string;
+  sender: string;
+  tone: CardTone;
+  frameStyle: FrameStyle;
+  message: string;
+  imageUrl?: string;
+  isGeneratingMessage: boolean;
+  isGeneratingImage: boolean;
+}
+
+// --- AI Services ---
+const getAI = () => {
+  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+  return new GoogleGenAI({ apiKey });
+};
+
+async function generateWishAI(recipient: string, sender: string, tone: CardTone): Promise<string> {
+  const ai = getAI();
+  const prompt = `Write a ${tone} Christmas wish for ${recipient} from ${sender}. Keep it under 50 words. Focus on the joy of the holiday season. Do not use any markdown formatting, asterisks, or hashtags. Just the plain text.`;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    return response.text || "May your days be merry and bright!";
+  } catch (error) {
+    console.error("Error generating wish:", error);
+    return "Wishing you a season filled with light and laughter. Merry Christmas!";
+  }
+}
+
+async function generateCardImageAI(tone: CardTone, recipient: string): Promise<string | null> {
+  const ai = getAI();
+  const prompt = `A stunning Christmas masterpiece. Style: ${tone === 'Funny' ? 'Whimsical Pixar style' : 'Elegant painterly aesthetic'}. Subject: cozy winter house, Santa in distance, lit pine tree, soft snow. Warm lighting. No text. 1:1 aspect ratio. High res.`;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ text: prompt }],
+      config: { imageConfig: { aspectRatio: "1:1" } }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error generating image:", error);
+    return null;
+  }
+}
+
+// --- Components ---
+
+const SnowEffect = () => {
+  const snowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const createSnowflake = () => {
+      if (!snowRef.current) return;
+      const snowflake = document.createElement('div');
+      snowflake.className = 'snowflake';
+      
+      const size = Math.random() * 5 + 2 + 'px';
+      snowflake.style.width = size;
+      snowflake.style.height = size;
+      snowflake.style.left = Math.random() * 100 + 'vw';
+      
+      const duration = Math.random() * 5 + 5;
+      snowflake.style.animation = `snowfall ${duration}s linear forwards`;
+      snowflake.style.opacity = (Math.random() * 0.5 + 0.3).toString();
+      
+      if (Math.random() > 0.5) {
+        snowflake.style.filter = `blur(${Math.random() * 1.5}px)`;
+      }
+
+      snowRef.current.appendChild(snowflake);
+      
+      setTimeout(() => {
+        snowflake.remove();
+      }, duration * 1000);
+    };
+
+    const interval = setInterval(createSnowflake, 150);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <div ref={snowRef} className="fixed inset-0 pointer-events-none z-[1]" />;
+};
 
 const INITIAL_CARD: CardData = {
   recipient: '',
@@ -14,43 +111,6 @@ const INITIAL_CARD: CardData = {
   imageUrl: 'https://images.unsplash.com/photo-1543589077-47d816067f70?auto=format&fit=crop&q=80&w=1000',
   isGeneratingMessage: false,
   isGeneratingImage: false,
-};
-
-const SnowEffect = () => {
-  useEffect(() => {
-    const createSnowflake = () => {
-      const snowflake = document.createElement('div');
-      snowflake.className = 'snowflake';
-      
-      // Randomize snowflake properties
-      const size = Math.random() * 5 + 2 + 'px';
-      snowflake.style.width = size;
-      snowflake.style.height = size;
-      snowflake.style.left = Math.random() * 100 + 'vw';
-      
-      const duration = Math.random() * 5 + 5; // 5s to 10s fall
-      snowflake.style.animation = `snowfall ${duration}s linear forwards`;
-      snowflake.style.opacity = (Math.random() * 0.5 + 0.3).toString();
-      
-      // Some flakes slightly blurred for depth
-      if (Math.random() > 0.5) {
-        snowflake.style.filter = `blur(${Math.random() * 2}px)`;
-      }
-
-      document.body.appendChild(snowflake);
-      
-      // Clean up after animation finishes
-      setTimeout(() => {
-        snowflake.remove();
-      }, duration * 1000);
-    };
-
-    // Frequency of new snowflakes
-    const interval = setInterval(createSnowflake, 120);
-    return () => clearInterval(interval);
-  }, []);
-
-  return null;
 };
 
 const CardGenerator = () => {
@@ -65,14 +125,14 @@ const CardGenerator = () => {
       return;
     }
     setCard(prev => ({ ...prev, isGeneratingMessage: true }));
-    const wish = await generateWish(card.recipient, card.sender, card.tone);
+    const wish = await generateWishAI(card.recipient, card.sender, card.tone);
     setCard(prev => ({ ...prev, message: wish, isGeneratingMessage: false }));
     if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
   };
 
   const handleGenerateImage = async () => {
     setCard(prev => ({ ...prev, isGeneratingImage: true }));
-    const img = await generateCardImage(card.tone, card.recipient);
+    const img = await generateCardImageAI(card.tone, card.recipient);
     if (img) {
       setCard(prev => ({ ...prev, imageUrl: img, isGeneratingImage: false }));
     } else {
@@ -85,8 +145,7 @@ const CardGenerator = () => {
     setIsDownloading(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
+      // Use higher pixel ratio for better clarity on Vercel
       const dataUrl = await toPng(cardRef.current, {
         cacheBust: true,
         pixelRatio: 3, 
@@ -105,15 +164,14 @@ const CardGenerator = () => {
       link.click();
     } catch (err) {
       console.error('Download failed:', err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      alert(`Download failed: ${errorMessage}`);
+      alert('Download failed. Please try again or use the Print button.');
     } finally {
       setIsDownloading(false);
     }
   };
 
   const shareToWhatsApp = () => {
-    const siteUrl = window.location.origin;
+    const siteUrl = window.location.href;
     const text = `🎄 Check out this Christmas Card I created for ${card.recipient || 'you'}! 🎅\n\n"${card.message}"\n\nCreate yours here: ${siteUrl}\n\nGenerated by Infinity Team ✨`;
     const encodedText = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encodedText}`, '_blank');
@@ -182,12 +240,10 @@ const CardGenerator = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center relative">
-      {/* Snow Effect Component */}
+    <div className="min-h-screen flex flex-col items-center relative overflow-hidden">
       <SnowEffect />
       
-      {/* Main Content with lower relative z-index than snowflakes */}
-      <header className="w-full max-w-7xl px-4 py-4 sm:py-6 flex justify-between items-center no-print relative z-10">
+      <header className="w-full max-w-7xl px-4 py-4 sm:py-6 flex justify-between items-center no-print relative z-[20]">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20 -rotate-6 transform hover:rotate-0 transition-transform cursor-pointer">
             <Sparkles className="text-white w-5 h-5 sm:w-6 sm:h-6" />
@@ -202,7 +258,6 @@ const CardGenerator = () => {
           <button 
             onClick={shareToWhatsApp}
             className="p-2 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-full transition-all active:scale-95 shadow-xl flex items-center gap-2"
-            title="Share on WhatsApp"
           >
             <MessageCircle size={18} />
             <span className="hidden md:inline">WhatsApp</span>
@@ -226,8 +281,8 @@ const CardGenerator = () => {
         </div>
       </header>
 
-      <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start px-4 mb-12 flex-1 relative z-10">
-        <div className={`fixed inset-0 bg-black/90 backdrop-blur-lg z-[60] lg:hidden transition-all duration-300 ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+      <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start px-4 mb-12 flex-1 relative z-[20]">
+        <div className={`fixed inset-0 bg-black/90 backdrop-blur-lg z-[100] lg:hidden transition-all duration-300 ${isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
           <div className="flex justify-end p-6">
             <button onClick={() => setIsMobileMenuOpen(false)} className="p-3 bg-zinc-800 rounded-full text-white"><X size={24} /></button>
           </div>
@@ -327,7 +382,7 @@ const CardGenerator = () => {
         </section>
       </main>
 
-      <footer className="w-full py-10 text-center no-print relative z-10">
+      <footer className="w-full py-10 text-center no-print relative z-[20]">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-center gap-6 mb-6 text-zinc-800">
              <Snowflake size={20} /> <Gift size={20} /> <Star size={20} />
